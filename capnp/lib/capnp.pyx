@@ -988,6 +988,9 @@ cdef class _DynamicEnumField:
     def __richcmp__(_DynamicEnumField self, right, int op):
         if isinstance(right, basestring):
             left = self.thisptr.name
+        elif isinstance(right, _StructModuleWhichItem):
+            left = self.thisptr.discriminantValue
+            right = right.value
         else:
             left = self.thisptr.discriminantValue
 
@@ -2891,7 +2894,11 @@ class _RestorerImpl(object):
     pass
 
 class _StructModuleWhich(object):
-    pass
+    def __init__(self, name):
+        self.name = name
+
+    def __repr__(self):
+        return self.name
 
 class _StructModuleWhichValue(object):
     def __init__(self, discriminant, value):
@@ -2899,10 +2906,17 @@ class _StructModuleWhichValue(object):
         self.value = value
 
 class _StructModuleWhichItem(object):
-    def __init__(self, schema, name, value):
+    def __init__(self, which_name, schema, name, discriminantValue):
+        self.which_name = which_name
         self.schema = schema
         self.name = name
-        self.value = value
+        self.discriminantValue = discriminantValue
+
+    def __repr__(self):
+        return '%s.%s(%s)' % (self.which_name, self.name, self.discriminantValue)
+
+    def __eq__(self, other):
+        return self.name == other
 
     def __call__(self, value=None, num_first_segment_words=None):
         return _StructModuleWhichValue(self.name, value)
@@ -2925,12 +2939,13 @@ class _StructModule(object):
                 if field_schema.discriminantCount == 0:
                     sub_module = _StructModule(raw_schema, name)
                 else:
-                    sub_module = _StructModuleWhich()
+                    sub_module = _StructModuleWhich(name)
                     setattr(sub_module, 'schema', raw_schema)
                     for union_field in field_schema.fields:
                         setattr(
                             sub_module, union_field.name,
                             _StructModuleWhichItem(
+                                name,
                                 union_field.schema,
                                 union_field.name,
                                 union_field.discriminantValue,
