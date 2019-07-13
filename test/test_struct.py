@@ -17,6 +17,42 @@ def all_types():
     return capnp.load(os.path.join(this_dir, 'all_types.capnp'))
 
 
+def test_new_which_builder(addressbook):
+    Employment = addressbook.Person.Employment
+
+    alice = addressbook.Person(
+        employment=Employment.school("MIT")
+    )
+
+    bob = addressbook.Person(
+        employment=Employment.unemployed()
+    )
+
+    colin = addressbook.Person(
+        employment=Employment.employer(addressbook.Employer(
+            name="Foo corp.",
+            boss=bob
+        ))
+    )
+
+    addresses = addressbook.AddressBook(
+        people=[alice, bob, colin]
+    )
+
+    assert alice.employment.which == Employment.school
+    assert alice.employment.which == "school"
+
+    assert bob.employment.which == Employment.unemployed
+    assert bob.employment.which == "unemployed"
+
+    assert colin.employment.which == Employment.employer
+    assert colin.employment.which == "employer"
+
+    with pytest.raises(Exception):
+        addresses.which
+    with pytest.raises(Exception):
+        addresses.which
+
 def test_which_builder(addressbook):
     addresses = addressbook.AddressBook.new_message()
     people = addresses.init('people', 2)
