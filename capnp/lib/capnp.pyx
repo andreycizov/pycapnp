@@ -990,7 +990,7 @@ cdef class _DynamicEnumField:
             left = self.thisptr.name
         elif isinstance(right, _StructModuleWhichItem):
             left = self.thisptr.discriminantValue
-            right = right.value
+            right = right.discriminantValue
         else:
             left = self.thisptr.discriminantValue
 
