@@ -21,7 +21,6 @@ from cpython.buffer cimport PyBUF_SIMPLE
 from types import ModuleType as _ModuleType
 import os as _os
 import sys as _sys
-import imp as _imp
 import traceback as _traceback
 from functools import partial as _partial
 import warnings as _warnings
@@ -1820,7 +1819,7 @@ cdef class Promise:
 
         argspec = None
         try:
-            argspec = _inspect.getargspec(func)
+            argspec = _inspect.getfullargspec(func)
         except:
             pass
         if argspec:
@@ -1883,7 +1882,7 @@ cdef class _VoidPromise:
 
         argspec = None
         try:
-            argspec = _inspect.getargspec(func)
+            argspec = _inspect.getfullargspec(func)
         except:
             pass
         if argspec:
@@ -1956,7 +1955,7 @@ cdef class _RemotePromise:
 
         argspec = None
         try:
-            argspec = _inspect.getargspec(func)
+            argspec = _inspect.getfullargspec(func)
         except:
             pass
         if argspec:
