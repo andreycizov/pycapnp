@@ -77,7 +77,7 @@ def test_large_read_multiple_bytes_memoryview(test_capnp):
         for m in test_capnp.Msg.read_multiple_bytes(memoryview(data)):
             pass
 
-    with pytest.raises(capnp.KjException, match=' Message did not contain a root pointer'):
+    with pytest.raises(capnp.KjException, match='Message did not contain a root pointer'):
         data = get_two_adjacent_messages(test_capnp) + b' '
         for m in test_capnp.Msg.read_multiple_bytes(memoryview(data)):
             pass
@@ -88,12 +88,12 @@ def test_large_read_multiple_bytes_buffer(test_capnp):
     for m in test_capnp.Msg.read_multiple_bytes(buffer(data)):
         pass
 
-    with pytest.raises(capnp.KjException, match='NONE'):
+    with pytest.raises(capnp.KjException, match='Message ends prematurely'):
         data = get_two_adjacent_messages(test_capnp)[:-1]
         for m in test_capnp.Msg.read_multiple_bytes(buffer(data)):
             pass
 
-    with pytest.raises(capnp.KjException, match='NONE'):
+    with pytest.raises(capnp.KjException, match='Message ends prematurely in first segment.'):
         data = get_two_adjacent_messages(test_capnp) + b' '
         for m in test_capnp.Msg.read_multiple_bytes(buffer(data)):
             pass

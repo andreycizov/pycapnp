@@ -1858,7 +1858,10 @@ cdef class Promise:
         try:
             argspec = _inspect.getfullargspec(func)
         except:
-            pass
+            try:
+                argspec = _inspect.getargspec(func)
+            except:
+                pass
         if argspec:
             args_length = len(argspec.args) if argspec.args else 0
             defaults_length = len(argspec.defaults) if argspec.defaults else 0
@@ -1921,7 +1924,10 @@ cdef class _VoidPromise:
         try:
             argspec = _inspect.getfullargspec(func)
         except:
-            pass
+            try:
+                argspec = _inspect.getargspec(func)
+            except:
+                pass
         if argspec:
             args_length = len(argspec.args) if argspec.args else 0
             defaults_length = len(argspec.defaults) if argspec.defaults else 0
@@ -1994,7 +2000,10 @@ cdef class _RemotePromise:
         try:
             argspec = _inspect.getfullargspec(func)
         except:
-            pass
+            try:
+                argspec = _inspect.getargspec(func)
+            except:
+                pass
         if argspec:
             args_length = len(argspec.args) if argspec.args else 0
             defaults_length = len(argspec.defaults) if argspec.defaults else 0

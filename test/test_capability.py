@@ -375,7 +375,7 @@ def test_null_cap():
     client = capability.TestPassedCap._new_client(PassedCapTest())
     assert client.foo(Server()).wait().x == '26'
 
-    with pytest.raises(capnp.KjException, match="Called null capability."):
+    with pytest.raises(capnp.KjException, match="null capability"):
         client.foo().wait()
 
 
