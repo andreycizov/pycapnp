@@ -151,7 +151,7 @@ setup(
         'clean': clean,
         'build_ext': build_libcapnp_ext
     },
-    install_requires=[],
+    install_requires=['future'],
     entry_points={
         'console_scripts' : ['capnpc-cython = capnp._gen:main']
     },
