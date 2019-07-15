@@ -96,9 +96,9 @@ def _warnings(expected_count=2, expected_text='This message has already been wri
     with warnings.catch_warnings(record=True) as w:
         yield
 
-        assert len(w) == expected_count
-        assert all(issubclass(x.category, UserWarning) for x in w), w
-        assert all(expected_text in str(x.message) for x in w), w
+        assert len(w) == expected_count, [str(x.message) for x in w]
+        assert all(issubclass(x.category, UserWarning) for x in w), [str(x.message) for x in w]
+        assert all(expected_text in str(x.message) for x in w), [str(x.message) for x in w]
 
 def test_roundtrip_file_multiple(all_types):
     f = tempfile.TemporaryFile()

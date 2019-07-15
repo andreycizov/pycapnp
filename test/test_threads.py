@@ -46,9 +46,9 @@ def _warnings(expected_count=1, expected_text='Restorers are deprecated.'):
     with warnings.catch_warnings(record=True) as w:
         yield
 
-        assert len(w) == expected_count
-        assert all(issubclass(x.category, UserWarning) for x in w), w
-        assert all(expected_text in str(x.message) for x in w), w
+        assert len(w) == expected_count, [str(x.message) for x in w]
+        assert all(issubclass(x.category, UserWarning) for x in w), [str(x.message) for x in w]
+        assert all(expected_text in str(x.message) for x in w), [str(x.message) for x in w]
 
 
 @pytest.mark.skipif(platform.python_implementation() == 'PyPy', reason="pycapnp's GIL handling isn't working properly at the moment for PyPy")

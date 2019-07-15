@@ -35,6 +35,11 @@ import socket as _socket
 import random as _random
 import collections as _collections
 
+if _sys.version_info <= (2, 7):
+    getargspec = _inspect.getargspec
+else:
+    getargspec = _inspect.getfullargspec
+
 _CAPNP_VERSION_MAJOR = capnp.CAPNP_VERSION_MAJOR
 _CAPNP_VERSION_MINOR = capnp.CAPNP_VERSION_MINOR
 _CAPNP_VERSION_MICRO = capnp.CAPNP_VERSION_MICRO
@@ -1856,12 +1861,9 @@ cdef class Promise:
 
         argspec = None
         try:
-            argspec = _inspect.getfullargspec(func)
+            argspec = getargspec(func)
         except:
-            try:
-                argspec = _inspect.getargspec(func)
-            except:
-                pass
+            pass
         if argspec:
             args_length = len(argspec.args) if argspec.args else 0
             defaults_length = len(argspec.defaults) if argspec.defaults else 0
@@ -1922,12 +1924,9 @@ cdef class _VoidPromise:
 
         argspec = None
         try:
-            argspec = _inspect.getfullargspec(func)
+            argspec = getargspec(func)
         except:
-            try:
-                argspec = _inspect.getargspec(func)
-            except:
-                pass
+            pass
         if argspec:
             args_length = len(argspec.args) if argspec.args else 0
             defaults_length = len(argspec.defaults) if argspec.defaults else 0
@@ -1998,12 +1997,9 @@ cdef class _RemotePromise:
 
         argspec = None
         try:
-            argspec = _inspect.getfullargspec(func)
+            argspec = getargspec(func)
         except:
-            try:
-                argspec = _inspect.getargspec(func)
-            except:
-                pass
+            pass
         if argspec:
             args_length = len(argspec.args) if argspec.args else 0
             defaults_length = len(argspec.defaults) if argspec.defaults else 0

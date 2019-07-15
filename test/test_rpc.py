@@ -34,9 +34,9 @@ def _warnings(expected_count=1, expected_text='Restorers are deprecated.'):
     with warnings.catch_warnings(record=True) as w:
         yield
 
-        assert len(w) == expected_count
-        assert all(issubclass(x.category, UserWarning) for x in w), w
-        assert all(expected_text in str(x.message) for x in w), w
+        assert len(w) == expected_count, [str(x.message) for x in w]
+        assert all(issubclass(x.category, UserWarning) for x in w), [str(x.message) for x in w]
+        assert all(expected_text in str(x.message) for x in w), [str(x.message) for x in w]
 
 
 def test_simple_rpc():
