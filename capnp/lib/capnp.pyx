@@ -35,7 +35,7 @@ import socket as _socket
 import random as _random
 import collections as _collections
 
-if _sys.version_info <= (2, 7):
+if _sys.version_info < (3, 0):
     getargspec = _inspect.getargspec
 else:
     getargspec = _inspect.getfullargspec
