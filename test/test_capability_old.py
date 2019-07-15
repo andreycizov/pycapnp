@@ -2,6 +2,8 @@ import pytest
 import capnp
 import os
 
+from capnp import KjException
+
 this_dir = os.path.dirname(__file__)
 
 def capability():
@@ -53,17 +55,17 @@ def test_client(capability):
 
     assert response.x == '26'
 
-    with pytest.raises(AttributeError):
+    with pytest.raises(AttributeError, match='foo2'):
         client.foo2_request()
 
     req = client.foo_request()
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError, match="Can't set `i` to `'foo'`"):
         req.i = 'foo'
 
     req = client.foo_request()
 
-    with pytest.raises(AttributeError):
+    with pytest.raises(AttributeError, match='baz'):
         req.baz = 1
 
 def test_simple_client(capability):
@@ -105,19 +107,19 @@ def test_simple_client(capability):
 
     assert response.x == 'localhost_test'
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError, match=r"Can't set argument `j` to `10` \(expected type `BOOL`\)"):
         remote = client.foo(5, 10)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError, match='`foo`. Expected 2 and got 3'):
         remote = client.foo(5, True, 100)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError, match="Can't set argument `i` to `foo`"):
         remote = client.foo(i='foo')
 
-    with pytest.raises(AttributeError):
+    with pytest.raises(AttributeError, match='foo2'):
         remote = client.foo2(i=5)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError, match=r"Can't set argument `baz` to `5` \(argument does not exist\)"):
         remote = client.foo(baz=5)
 
 def test_pipeline(capability):
@@ -149,7 +151,7 @@ def test_exception_client(capability):
     client = capability.TestInterface._new_client(BadServer())
 
     remote = client._send('foo', i=5)
-    with pytest.raises(capnp.KjException):
+    with pytest.raises(KjException, match='Too many values returned from `foo`. Expected `1` got `2`'):
         remote.wait()
 
 class BadPipelineServer:
@@ -183,10 +185,10 @@ def test_pipeline_exception(capability):
     outCap = remote.outBox.cap
     pipelinePromise = outCap.foo(i=10)
 
-    with pytest.raises(Exception):
-        loop.wait(pipelinePromise)
+    with pytest.raises(KjException, match='test was a success'):
+        pipelinePromise.wait()
 
-    with pytest.raises(Exception):
+    with pytest.raises(KjException, match='test was a success'):
         remote.wait()
 
 def test_casting(capability):
@@ -194,7 +196,7 @@ def test_casting(capability):
     client2 = client.upcast(capability.TestInterface)
     client3 = client2.cast_as(capability.TestInterface)
 
-    with pytest.raises(Exception):
+    with pytest.raises(KjException, match="Can't upcast to non-superclass"):
         client.upcast(capability.TestPipeline)
 
 class TailCallOrder:

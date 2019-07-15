@@ -209,7 +209,7 @@ def test_from_bytes_traversal_limit(all_types):
     data = bld.to_bytes()
 
     msg = all_types.TestAllTypes.from_bytes(data)
-    with pytest.raises(capnp.KjException):
+    with pytest.raises(capnp.KjException, match='Exceeded message traversal limit'):
         for i in range(0, size):
             msg.structList[i].uInt8Field == 0
 
@@ -226,7 +226,7 @@ def test_from_bytes_packed_traversal_limit(all_types):
     data = bld.to_bytes_packed()
 
     msg = all_types.TestAllTypes.from_bytes_packed(data)
-    with pytest.raises(capnp.KjException):
+    with pytest.raises(capnp.KjException, match='Exceeded message traversal limit'):
         for i in range(0, size):
             msg.structList[i].uInt8Field == 0
 

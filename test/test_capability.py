@@ -1,9 +1,11 @@
 import pytest
 import capnp
+from capnp import KjException
 import os
 import time
 
 import test_capability_capnp as capability
+
 
 class Server(capability.TestInterface.Server):
     def __init__(self, val=1):
@@ -21,6 +23,7 @@ class Server(capability.TestInterface.Server):
     def bam(self, i, **kwargs):
         return str(i) + '_test', i
 
+
 class PipelineServer(capability.TestPipeline.Server):
     def getCap(self, n, inCap, _context, **kwargs):
         def _then(response):
@@ -29,6 +32,7 @@ class PipelineServer(capability.TestPipeline.Server):
             _results.outBox.cap = Server(100)
 
         return inCap.foo(i=n).then(_then)
+
 
 def test_client():
     client = capability.TestInterface._new_client(Server())
@@ -49,18 +53,19 @@ def test_client():
 
     assert response.x == '26'
 
-    with pytest.raises(AttributeError):
+    with pytest.raises(AttributeError, match="foo2"):
         client.foo2_request()
 
     req = client.foo_request()
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError, match="Can't set `i` to `'foo'`"):
         req.i = 'foo'
 
     req = client.foo_request()
 
-    with pytest.raises(AttributeError):
+    with pytest.raises(AttributeError, match="baz"):
         req.baz = 1
+
 
 def test_simple_client():
     client = capability.TestInterface._new_client(Server())
@@ -69,7 +74,6 @@ def test_simple_client():
     response = remote.wait()
 
     assert response.x == '26'
-
 
     remote = client.foo(i=5)
     response = remote.wait()
@@ -107,20 +111,21 @@ def test_simple_client():
     assert response.x == '5_test'
     assert response.i == 5
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError, match=r"Can't set argument `j` to `10` \(expected type `BOOL`\)"):
         remote = client.foo(5, 10)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError, match="`foo`. Expected 2 and got 3"):
         remote = client.foo(5, True, 100)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError, match="Can't set argument `i` to `foo`"):
         remote = client.foo(i='foo')
 
-    with pytest.raises(AttributeError):
+    with pytest.raises(AttributeError, match="foo2"):
         remote = client.foo2(i=5)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError, match=r"Can't set argument `baz` to `5` \(argument does not exist\)"):
         remote = client.foo(baz=5)
+
 
 def test_pipeline():
     client = capability.TestPipeline._new_client(PipelineServer())
@@ -137,6 +142,7 @@ def test_pipeline():
     response = remote.wait()
     assert response.s == '26_foo'
 
+
 class BadServer(capability.TestInterface.Server):
     def __init__(self, val=1):
         self.val = val
@@ -145,14 +151,16 @@ class BadServer(capability.TestInterface.Server):
         extra = 0
         if j:
             extra = 1
-        return str(i * 5 + extra + self.val), 10 # returning too many args
+        return str(i * 5 + extra + self.val), 10  # returning too many args
+
 
 def test_exception_client():
     client = capability.TestInterface._new_client(BadServer())
 
     remote = client._send('foo', i=5)
-    with pytest.raises(capnp.KjException):
+    with pytest.raises(capnp.KjException, match="Too many values returned from `foo`. Expected `1` got `2`"):
         remote.wait()
+
 
 class BadPipelineServer(capability.TestPipeline.Server):
     def getCap(self, n, inCap, _context, **kwargs):
@@ -160,10 +168,12 @@ class BadPipelineServer(capability.TestPipeline.Server):
             _results = _context.results
             _results.s = response.x + '_foo'
             _results.outBox.cap = Server(100)
+
         def _error(error):
-            raise Exception('test was a success')
+            raise KjException('test was a success')
 
         return inCap.foo(i=n).then(_then, _error)
+
 
 def test_exception_chain():
     client = capability.TestPipeline._new_client(BadPipelineServer())
@@ -173,8 +183,9 @@ def test_exception_chain():
 
     try:
         remote.wait()
-    except Exception as e:
+    except KjException as e:
         assert 'test was a success' in str(e)
+
 
 def test_pipeline_exception():
     client = capability.TestPipeline._new_client(BadPipelineServer())
@@ -185,19 +196,21 @@ def test_pipeline_exception():
     outCap = remote.outBox.cap
     pipelinePromise = outCap.foo(i=10)
 
-    with pytest.raises(Exception):
-        loop.wait(pipelinePromise)
+    with pytest.raises(KjException, match="test was a success"):
+        pipelinePromise.wait()
 
-    with pytest.raises(Exception):
+    with pytest.raises(KjException, match="test was a success"):
         remote.wait()
+
 
 def test_casting():
     client = capability.TestExtends._new_client(Server())
     client2 = client.upcast(capability.TestInterface)
     client3 = client2.cast_as(capability.TestInterface)
 
-    with pytest.raises(Exception):
+    with pytest.raises(KjException, match="Can't upcast to non-superclass."):
         client.upcast(capability.TestPipeline)
+
 
 class TailCallOrder(capability.TestCallOrder.Server):
     def __init__(self):
@@ -206,6 +219,7 @@ class TailCallOrder(capability.TestCallOrder.Server):
     def getCallSequence(self, expected, **kwargs):
         self.count += 1
         return self.count
+
 
 class TailCaller(capability.TestTailCaller.Server):
     def __init__(self):
@@ -216,6 +230,7 @@ class TailCaller(capability.TestTailCaller.Server):
 
         tail = callee.foo_request(i=i, t='from TailCaller')
         return _context.tail_call(tail)
+
 
 class TailCallee(capability.TestTailCallee.Server):
     def __init__(self):
@@ -228,6 +243,7 @@ class TailCallee(capability.TestTailCallee.Server):
         results.i = i
         results.t = t
         results.c = TailCallOrder()
+
 
 def test_tail_call():
     callee_server = TailCallee()
@@ -267,7 +283,7 @@ def test_cancel():
     remote = req.send()
     remote.cancel()
 
-    with pytest.raises(Exception):
+    with pytest.raises(KjException, match="Promise was already used in a consuming operation. You can no longer use this Promise object"):
         remote.wait()
 
 
@@ -278,12 +294,14 @@ def test_timer():
     def set_timer_var():
         global test_timer_var
         test_timer_var = True
+
     capnp.getTimer().after_delay(1).then(set_timer_var).wait()
 
     assert test_timer_var is True
 
     test_timer_var = False
-    promise = capnp.Promise(0).then(lambda x: time.sleep(.1)).then(lambda x: time.sleep(.1)).then(lambda x: set_timer_var())
+    promise = capnp.Promise(0).then(lambda x: time.sleep(.1)).then(lambda x: time.sleep(.1)).then(
+        lambda x: set_timer_var())
 
     canceller = capnp.getTimer().after_delay(1).then(lambda: promise.cancel())
 
@@ -301,32 +319,32 @@ def test_double_send():
     req.i = 5
 
     req.send()
-    with pytest.raises(Exception):
+    with pytest.raises(KjException, match='Request has already been sent.'):
         req.send()
 
 
 def test_then_args():
     capnp.Promise(0).then(lambda x: 1)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError, match="take exactly one argument"):
         capnp.Promise(0).then(lambda: 1)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError, match="take exactly one argument"):
         capnp.Promise(0).then(lambda x, y: 1)
 
     capnp.getTimer().after_delay(1).then(lambda: 1)  # after_delay is a VoidPromise
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError, match="Function passed to `then` call must take no arguments"):
         capnp.getTimer().after_delay(1).then(lambda x: 1)
 
     client = capability.TestInterface._new_client(Server())
 
     client.foo(i=5).then(lambda x: 1)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError, match="take exactly one argument"):
         client.foo(i=5).then(lambda: 1)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError, match="take exactly one argument"):
         client.foo(i=5).then(lambda x, y: 1)
 
 
@@ -349,6 +367,7 @@ class PassedCapTest(capability.TestPassedCap.Server):
     def foo(self, cap, _context, **kwargs):
         def set_result(res):
             _context.results.x = res.x
+
         return cap.foo(5).then(set_result)
 
 
@@ -356,7 +375,7 @@ def test_null_cap():
     client = capability.TestPassedCap._new_client(PassedCapTest())
     assert client.foo(Server()).wait().x == '26'
 
-    with pytest.raises(capnp.KjException):
+    with pytest.raises(capnp.KjException, match="Called null capability."):
         client.foo().wait()
 
 
@@ -368,7 +387,8 @@ class StructArgTest(capability.TestStructArg.Server):
 def test_struct_args():
     client = capability.TestStructArg._new_client(StructArgTest())
     assert client.bar(a='test', b=1).wait().c == 'test1'
-    with pytest.raises(capnp.KjException):
+    with pytest.raises(TypeError,
+                       match="Cannot call method `bar` with positional args, since its param struct is not implicitly defined and thus does not have a set order of arguments"):
         assert client.bar('test', 1).wait().c == 'test1'
 
 

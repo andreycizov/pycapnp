@@ -48,9 +48,7 @@ def test_new_which_builder(addressbook):
     assert colin.employment.which == Employment.employer
     assert colin.employment.which == "employer"
 
-    with pytest.raises(Exception):
-        addresses.which
-    with pytest.raises(Exception):
+    with pytest.raises(AttributeError, match='which'):
         addresses.which
 
 def test_which_builder(addressbook):
@@ -73,9 +71,7 @@ def test_which_builder(addressbook):
     assert bob.employment.which == addressbook.Person.Employment.unemployed
     assert bob.employment.which == "unemployed"
 
-    with pytest.raises(Exception):
-        addresses.which
-    with pytest.raises(Exception):
+    with pytest.raises(AttributeError, match='which'):
         addresses.which
 
 
@@ -107,9 +103,7 @@ def test_which_reader(addressbook):
     bob = people[1]
     assert bob.employment.which == "unemployed"
 
-    with pytest.raises(Exception):
-        addresses.which
-    with pytest.raises(Exception):
+    with pytest.raises(AttributeError, match='which'):
         addresses.which
 
 
@@ -139,7 +133,7 @@ def test_builder_set(addressbook):
 
     assert person.name == 'test'
 
-    with pytest.raises(AttributeError):
+    with pytest.raises(AttributeError, match='foo'):
         person.foo = 'test'
 
 
@@ -258,7 +252,7 @@ def test_to_dict_verbose(addressbook):
     if sys.version_info >= (2, 7):
         assert person.to_dict(verbose=True, ordered=True)['phones'] == []
 
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match='phones'):
         assert person.to_dict()['phones'] == []
 
 
@@ -268,7 +262,7 @@ def test_to_dict_ordered(addressbook):
     if sys.version_info >= (2, 7):
         assert list(person.to_dict(ordered=True).keys()) == ['id', 'name', 'email', 'phones', 'employment']
     else:
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match='NONE'):
             person.to_dict(ordered=True)
 
 def test_nested_list(addressbook):

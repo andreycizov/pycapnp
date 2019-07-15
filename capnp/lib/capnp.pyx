@@ -7,6 +7,7 @@
 # cython: c_string_encoding = default
 # cython: embedsignature = True
 # cython: language_level = 2
+import re
 
 cimport cython
 
@@ -18,6 +19,8 @@ from cython.operator cimport dereference as deref
 from cpython.exc cimport PyErr_Clear
 from cpython cimport Py_buffer, PyObject_CheckBuffer
 from cpython.buffer cimport PyBUF_SIMPLE
+
+from future.utils import raise_from
 
 from types import ModuleType as _ModuleType
 import os as _os
@@ -59,6 +62,9 @@ cdef public PyObject * wrap_remote_call(PyObject * func, Response & r) except * 
 
 cdef _find_field_order(struct_node):
     return [f.name for f in sorted(struct_node.fields, key=_attrgetter('codeOrder'))]
+
+cdef _fields_ordered(struct_node):
+    return [f for f in sorted(struct_node.fields, key=_attrgetter('codeOrder'))]
 
 cdef public VoidPromise * call_server_method(PyObject * _server, char * _method_name, CallContext & _context) except * with gil:
     server = <object>_server
@@ -107,7 +113,7 @@ cdef public VoidPromise * call_server_method(PyObject * _server, char * _method_
                 ret = (ret,)
             names = _find_field_order(context.results.schema.node.struct)
             if len(ret) > len(names):
-                raise KjException('Too many values returned from `%s`. Expected %d and got %d' % (method_name, len(names), len(ret)))
+                raise_from(TypeError('Too many values returned from `%s`. Expected `%d` got `%d`' % (method_name, len(names), len(ret))), None)
 
             results = context.results
             for arg_name, arg_val in zip(names, ret):
@@ -200,6 +206,8 @@ cdef class _KjExceptionWrapper:
 # Extension classes can't inherit from Exception, so we're going to proxy wrap kj::Exception, and forward all calls to it from this Python class
 class KjException(Exception):
 
+    VALUE_TYPE_MISMATCH = re.compile(r'expected reader.type == (.+); Value type mismatch.')
+
     '''KjException is a wrapper of the internal C++ exception type. There is an enum named `Type` listed below, and a bunch of fields'''
 
     Type = _make_enum('Type', **{x : x for x in _Type.reverse_mapping.values()})
@@ -237,12 +245,19 @@ class KjException(Exception):
     def __str__(self):
         return self.message
 
-    def _to_python(self):
-        message = self.message
-        if self.wrapper.type == 'FAILED':
-            if 'has no such' in self.message:
-                return AttributeError(message)
-        return self
+    def is_value_type_mismatch(self):
+        found = self.VALUE_TYPE_MISMATCH.search(self.message)
+
+        if not found:
+            return None
+
+        return found.group(1)
+
+    def is_value_type_mismatch_bare(self):
+        return 'Value type mismatch.' in self.message
+
+    def is_attribute(self):
+        return 'struct has no such member' in self.message
 
 cdef public object wrap_kj_exception(capnp.Exception & exception) with gil:
     PyErr_Clear()
@@ -259,7 +274,7 @@ cdef public object wrap_kj_exception_for_reraise(capnp.Exception & exception) wi
 
 cdef public object get_exception_info(object exc_type, object exc_obj, object exc_tb) with gil:
     try:
-        return (exc_tb.tb_frame.f_code.co_filename.encode(), exc_tb.tb_lineno, (repr(exc_type) + ':' + str(exc_obj)).encode())
+        return (exc_tb.tb_frame.f_code.co_filename.encode(), exc_tb.tb_lineno, (exc_type.__name__ + ': ' + str(exc_obj)).encode())
     except:
         return (b'', 0, b"Couldn't determine python exception")
 
@@ -877,9 +892,10 @@ cdef _to_dict(msg, bint verbose, bint ordered):
             ret = {}
         try:
             which = temp_msg_b.which()
-            ret[which] = _to_dict(temp_msg_b._get(which), verbose, ordered)
-        except KjException:
+        except AttributeError:
             pass
+        else:
+            ret[which] = _to_dict(temp_msg_b._get(which), verbose, ordered)
 
         for field in temp_msg_b.schema.non_union_fields:
             if verbose or temp_msg_b._has(field):
@@ -1052,7 +1068,10 @@ cdef class _DynamicStructReader:
         try:
             return self._get(field)
         except KjException as e:
-            raise e._to_python(), None, _sys.exc_info()[2]
+            if e.is_attribute():
+                raise_from(AttributeError(field), None)
+            else:
+                raise
 
     cpdef _get_by_field(self, _StructSchemaField field):
         return to_python_reader(self.thisptr.getByField(field.thisptr), self)
@@ -1067,7 +1086,7 @@ cdef class _DynamicStructReader:
         try:
             return <char *>helpers.fixMaybe(self.thisptr.which()).getProto().getName().cStr()
         except:
-            raise KjException("Attempted to call which on a non-union type")
+            raise TypeError("Attempted to call which on a non-union type") from None
 
     cpdef _DynamicEnumField _which(self):
         """Returns the enum corresponding to the union in this struct
@@ -1080,7 +1099,7 @@ cdef class _DynamicStructReader:
         try:
             which = _DynamicEnumField()._init(_StructSchemaField()._init(helpers.fixMaybe(self.thisptr.which()), self).proto)
         except:
-            raise KjException("Attempted to call which on a non-union type")
+            raise TypeError("Attempted to call which on a non-union type") from None
 
         return which
 
@@ -1093,7 +1112,10 @@ cdef class _DynamicStructReader:
         :Raises: :exc:`KjException` if this struct doesn't contain a union
         """
         def __get__(_DynamicStructReader self):
-            return self._which()
+            try:
+                return self._which()
+            except TypeError:
+                raise_from(AttributeError('which'), None)
 
     property schema:
         """A property that returns the _StructSchema object matching this reader"""
@@ -1266,7 +1288,10 @@ cdef class _DynamicStructBuilder:
         try:
             return self._get(field)
         except KjException as e:
-            raise e._to_python(), None, _sys.exc_info()[2]
+            if e.is_attribute():
+                raise_from(AttributeError(field), None)
+            else:
+                raise
 
     cpdef _set(self, field, value):
         _setDynamicField(self.thisptr, field, value, self._parent)
@@ -1278,7 +1303,12 @@ cdef class _DynamicStructBuilder:
         try:
             self._set(field, value)
         except KjException as e:
-            raise e._to_python(), None, _sys.exc_info()[2]
+            if e.is_attribute():
+                raise_from(AttributeError(field), None)
+            elif e.is_value_type_mismatch_bare():
+                raise_from(TypeError("Can't set `%s` to `%s` (probably wrong type is set)" % (field, repr(value))), None)
+            else:
+                raise
 
     cpdef _has(self, field):
         return self.thisptr.has(field)
@@ -1359,7 +1389,7 @@ cdef class _DynamicStructBuilder:
         try:
             which = _DynamicEnumField()._init(_StructSchemaField()._init(helpers.fixMaybe(self.thisptr.which()), self).proto)
         except:
-            raise KjException("Attempted to call which on a non-union type")
+            raise TypeError("Attempted to call which on a non-union type")
 
         return which
 
@@ -1372,7 +1402,10 @@ cdef class _DynamicStructBuilder:
         :Raises: :exc:`KjException` if this struct doesn't contain a union
         """
         def __get__(_DynamicStructBuilder self):
-            return self._which()
+            try:
+                return self._which()
+            except TypeError:
+                raise AttributeError('which')
 
     cpdef adopt(self, field, _DynamicOrphan orphan):
         """A method for adopting Cap'n Proto orphans
@@ -1504,7 +1537,10 @@ cdef class _DynamicStructPipeline:
         try:
             return self._get(field)
         except KjException as e:
-            raise e._to_python(), None, _sys.exc_info()[2]
+            if e.is_attribute():
+                raise_from(AttributeError(field), None)
+            else:
+                raise
 
     property schema:
         """A property that returns the _StructSchema object matching this reader"""
@@ -1827,7 +1863,7 @@ cdef class Promise:
             args_length = len(argspec.args) if argspec.args else 0
             defaults_length = len(argspec.defaults) if argspec.defaults else 0
             if args_length - defaults_length != 1:
-                raise KjException('Function passed to `then` call must take exactly one argument')
+                raise TypeError('Function passed to `then` call must take exactly one argument')
 
         cdef Promise new_promise = Promise()._init(helpers.then(deref(self.thisptr), <PyObject *>func, <PyObject *>error_func), self)
         return Promise()._init(new_promise.thisptr.attach(capnp.makePyRefCounter(<PyObject *>func), capnp.makePyRefCounter(<PyObject *>error_func)), new_promise)
@@ -1890,7 +1926,7 @@ cdef class _VoidPromise:
             args_length = len(argspec.args) if argspec.args else 0
             defaults_length = len(argspec.defaults) if argspec.defaults else 0
             if args_length - defaults_length != 0:
-                raise KjException('Function passed to `then` call must take no arguments')
+                raise TypeError('Function passed to `then` call must take no arguments')
 
         cdef Promise new_promise = Promise()._init(helpers.then(deref(self.thisptr), <PyObject *>func, <PyObject *>error_func), self)
         return Promise()._init(new_promise.thisptr.attach(capnp.makePyRefCounter(<PyObject *>func), capnp.makePyRefCounter(<PyObject *>error_func)), new_promise)
@@ -1963,7 +1999,7 @@ cdef class _RemotePromise:
             args_length = len(argspec.args) if argspec.args else 0
             defaults_length = len(argspec.defaults) if argspec.defaults else 0
             if args_length - defaults_length != 1:
-                raise KjException('Function passed to `then` call must take exactly one argument')
+                raise TypeError('Function passed to `then` call must take exactly one argument')
 
         cdef Promise new_promise = Promise()._init(helpers.then(deref(self.thisptr), <PyObject *>func, <PyObject *>error_func), self)
         return Promise()._init(new_promise.thisptr.attach(capnp.makePyRefCounter(<PyObject *>func), capnp.makePyRefCounter(<PyObject *>error_func)), new_promise)
@@ -1983,7 +2019,10 @@ cdef class _RemotePromise:
         try:
             return self._get(field)
         except KjException as e:
-            raise e._to_python(), None, _sys.exc_info()[2]
+            if e.is_attribute():
+                raise_from(AttributeError(field), None)
+            else:
+                raise
 
     property schema:
         """A property that returns the _StructSchema object matching this reader"""
@@ -2086,7 +2125,10 @@ cdef class _DynamicCapabilityServer:
         try:
             return getattr(self.server, field)
         except KjException as e:
-            raise e._to_python(), None, _sys.exc_info()[2]
+            if e.is_attribute():
+                raise_from(AttributeError(field), None)
+            else:
+                raise
 
 cdef class _DynamicCapabilityClient:
     cdef C_DynamicCapability.Client thisptr
@@ -2115,22 +2157,48 @@ cdef class _DynamicCapabilityClient:
             raise AttributeError("Method named %s not found." % method_name)
 
         params = meth.param_type.node
+        is_struct = False
         if params.scopeId != 0:
-            raise KjException("Cannot call method `%s` with positional args, since its param struct is not implicitly defined and thus does not have a set order of arguments" % method_name)
+            is_struct = True
 
-        return _find_field_order(params.struct)
+        return is_struct, _fields_ordered(params.struct)
 
     cdef _set_fields(self, Request * request, name, args, kwargs):
+        is_struct, arg_fields = self._find_method_args(name)
         if args is not None and len(args) > 0:
-            arg_names = self._find_method_args(name)
-            if len(args) > len(arg_names):
-                raise KjException('Too many arguments passed to `%s`. Expected %d and got %d' % (name, len(arg_names), len(args)))
-            for arg_name, arg_val in zip(arg_names, args):
-                _setDynamicField(<DynamicStruct_Builder>deref(request), arg_name, arg_val, self)
+            if is_struct:
+                raise TypeError("Cannot call method `%s` with positional args, since its param struct is not implicitly defined and thus does not have a set order of arguments" % name)
+
+            if len(args) > len(arg_fields):
+                raise TypeError('Too many arguments passed to `%s`. Expected %d and got %d' % (name, len(arg_fields), len(args)))
+            for arg_field, arg_val in zip(arg_fields, args):
+                try:
+                    _setDynamicField(<DynamicStruct_Builder>deref(request), arg_field.name, arg_val, self)
+                except KjException as e:
+                    type_str = e.is_value_type_mismatch()
+
+                    if type_str:
+                        raise_from(TypeError('Can\'t set argument `%s` to `%s` (expected type `%s`)' % (arg_field.name, arg_val, type_str)), None)
+                    else:
+                        raise
 
         if kwargs is not None:
             for key, val in kwargs.items():
-                _setDynamicField(<DynamicStruct_Builder>deref(request), key, val, self)
+                try:
+                    _setDynamicField(<DynamicStruct_Builder>deref(request), key, val, self)
+                except KjException as e:
+                    arg_field = [x for x in arg_fields if x.name == key]
+                    if len(arg_field) == 0:
+                        raise_from(TypeError('Can\'t set argument `%s` to `%s` (argument does not exist)' % (key, val)), None)
+
+                    arg_field, = arg_field
+                    type_str = e.is_value_type_mismatch()
+                    if type_str:
+                        raise_from(TypeError('Can\'t set argument `%s` to `%s` (expected type `%s`)' % (arg_field.name, val, type_str)), None)
+                    elif e.is_value_type_mismatch_bare():
+                        raise_from(TypeError('Can\'t set argument `%s` to `%s`' % (arg_field.name, val)), None)
+                    else:
+                        raise
 
     cpdef _send_helper(self, name, word_count, args, kwargs) except +reraise_kj_exception:
         # if word_count is None:
@@ -2168,7 +2236,10 @@ cdef class _DynamicCapabilityClient:
                 raise AttributeError('Method named %s not found' % name)
             return _partial(self._send, name)
         except KjException as e:
-            raise e._to_python(), None, _sys.exc_info()[2]
+            if e.is_attribute():
+                raise_from(AttributeError(name), None)
+            else:
+                raise
 
     cpdef upcast(self, schema) except +reraise_kj_exception:
         cdef _InterfaceSchema s

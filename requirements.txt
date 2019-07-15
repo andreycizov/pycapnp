@@ -3,3 +3,4 @@ cython == 0.21.2
 setuptools >= 0.8
 pytest
 tox
+future

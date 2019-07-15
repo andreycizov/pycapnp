@@ -75,7 +75,7 @@ def test_simple_rpc_with_options():
     cap = cap.cast_as(test_capability_capnp.TestInterface)
 
     remote = cap.foo(i=5)
-    with pytest.raises(capnp.KjException):
+    with pytest.raises(capnp.KjException, match='Message is too large.'):
         response = remote.wait()
 
 
@@ -125,7 +125,7 @@ def test_ez_rpc():
 
     remote = cap.foo(i=5)
 
-    with pytest.raises(capnp.KjException):
+    with pytest.raises(capnp.KjException, match='remote exception:'):
         response = remote.wait()
 
 def test_simple_rpc_bootstrap():
