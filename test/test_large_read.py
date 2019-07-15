@@ -93,7 +93,7 @@ def test_large_read_multiple_bytes_buffer(test_capnp):
         for m in test_capnp.Msg.read_multiple_bytes(buffer(data)):
             pass
 
-    with pytest.raises(capnp.KjException, match='Message ends prematurely in first segment.'):
+    with pytest.raises(capnp.KjException, match='Message did not contain a root pointer.'):
         data = get_two_adjacent_messages(test_capnp) + b' '
         for m in test_capnp.Msg.read_multiple_bytes(buffer(data)):
             pass
